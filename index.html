@@ -822,9 +822,12 @@
     document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; curEl.style.cssText = `left:${mx - 5}px;top:${my - 5}px;position:fixed;width:10px;height:10px;border-radius:50%;background:#FFD700;pointer-events:none;z-index:9999` });
     (function rl() { tx += (mx - tx) * .12; ty += (my - ty) * .12; ringEl.style.cssText = `left:${tx - 13}px;top:${ty - 13}px;position:fixed;width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,215,0,.5);pointer-events:none;z-index:9998`; requestAnimationFrame(rl) })();
 
-    /* STATE */
+    /* STATE & SMOOTH SCROLL VARS */
     let scene, camera, renderer, crescents = [], starGems = [], lanterns = [], mosqueGroup, wishSpheres = [];
-    let currentPage = 0, scrollProgress = 0, time = 0;
+
+    // SMOOTH SCROLL VARIABLES ADDED HERE
+    let currentPage = 0, scrollProgress = 0, smoothProgress = 0, time = 0;
+
     const GOLD = [0xFFD700, 0xC9A84C, 0xFFF8DC]; const TEAL = [0x4ECDC4, 0x2EAF8C];
 
     function init() {
@@ -928,11 +931,25 @@
 
     function animate() {
       requestAnimationFrame(animate); time += .016;
+
+      // LERP (SMOOTHING) CALCULATION - Slowly catch up to the scroll position
+      smoothProgress += (scrollProgress - smoothProgress) * 0.08;
+
+      // UPDATE ACTIVE PAGE BASED ON THE SMOOTHED PROGRESS
+      const np = smoothProgress < .33 ? 0 : smoothProgress < .66 ? 1 : 2;
+      if (np !== currentPage) {
+        currentPage = np;
+        document.querySelectorAll('.page-content').forEach((el, i) => el.classList.toggle('active', i === currentPage));
+        updateHint()
+      }
+
       if (currentPage === 0) {
-        crescents.forEach((c, i) => { const d = c.userData; c.position.y = d.initY + scrollProgress * 16 + Math.sin(time * d.floatSpd + i) * .45; c.rotation.z = Math.sin(time * d.swaySpd + i * .4) * .12; c.visible = true });
+        // USING smoothProgress INSTEAD OF scrollProgress
+        crescents.forEach((c, i) => { const d = c.userData; c.position.y = d.initY + smoothProgress * 16 + Math.sin(time * d.floatSpd + i) * .45; c.rotation.z = Math.sin(time * d.swaySpd + i * .4) * .12; c.visible = true });
         lanterns.forEach(l => l.visible = false); mosqueGroup.scale.set(0, 0, 0); wishSpheres.forEach(w => w.visible = false);
       } else if (currentPage === 1) {
-        const ns = Math.min(1, scrollProgress * 3); const cs = mosqueGroup.scale.x + (ns - mosqueGroup.scale.x) * .07;
+        // USING smoothProgress INSTEAD OF scrollProgress
+        const ns = Math.min(1, smoothProgress * 3); const cs = mosqueGroup.scale.x + (ns - mosqueGroup.scale.x) * .07;
         mosqueGroup.scale.setScalar(cs); mosqueGroup.rotation.y = time * .18; mosqueGroup.position.y = Math.sin(time * .5) * .1;
         lanterns.forEach((l, i) => { l.visible = true; l.position.y = l.userData.initY + Math.sin(time * l.userData.fltSpd + i) * l.userData.swayAmp; l.rotation.z = Math.sin(time * l.userData.swaySpd) * .06 });
         crescents.forEach(c => c.visible = false); wishSpheres.forEach(w => w.visible = false);
@@ -941,18 +958,19 @@
         mosqueGroup.scale.setScalar(0); crescents.forEach(c => c.visible = false); lanterns.forEach(l => l.visible = false);
       }
       starGems.forEach(s => { const sc = .4 + .6 * (Math.sin(time * s.userData.spd + s.userData.phase) * .5 + .5); s.scale.setScalar(sc); s.rotation.y += .01 });
+
       const tz = currentPage === 1 ? 3.6 : 4.8;
       camera.position.z += (tz - camera.position.z) * .04;
       camera.position.x += (((mx / innerWidth) - .5) * .5 - camera.position.x) * .04;
       renderer.render(scene, camera);
     }
 
+    // UPDATED SCROLL HANDLER: IT NOW ONLY CAPTURES THE PHYSICAL SCROLL TARGET
     function handleScroll() {
       const max = document.documentElement.scrollHeight - innerHeight;
       scrollProgress = Math.min(window.scrollY / max, 1);
-      const np = scrollProgress < .33 ? 0 : scrollProgress < .66 ? 1 : 2;
-      if (np !== currentPage) { currentPage = np; document.querySelectorAll('.page-content').forEach((el, i) => el.classList.toggle('active', i === currentPage)); updateHint() }
     }
+
     function updateHint() {
       const msgs = ['Scroll to Continue ↓', 'Next Blessing Awaits ↓', 'Eid Mubarak! 🌙'];
       document.getElementById('scrollText').textContent = msgs[currentPage];
@@ -961,10 +979,13 @@
 
     let gi = 0;
     const tpls = [n => `Eid Mubarak! 🌙 From ${n} — May Allah shower you with endless joy and peace.`, n => `From ${n} with love — Taqabbal Allahu minna wa minkum. Eid Mubarak! ✨`, n => `${n} sends heartfelt Eid blessings! May this day bring barakah to your family. 🕌`, n => `Eid Mubarak from ${n}! 🌙 May the light of this blessed day fill your heart always.`];
-    <!-- document.getElementById('nameIn').addEventListener('input', e => { const n = e.target.value.trim(); const box = document.getElementById('msgBox'); const txt = document.getElementById('msgText'); if (n) { txt.textContent = tpls[gi % tpls.length](n); box.classList.add('lit') } else { txt.textContent = 'Enter your name to craft a personalised blessing ✨'; box.classList.remove('lit') } gi++ }); -->
+
+    document.getElementById('nameIn')?.addEventListener('input', e => { const n = e.target.value.trim(); const box = document.getElementById('msgBox'); const txt = document.getElementById('msgText'); if (n) { txt.textContent = tpls[gi % tpls.length](n); box.classList.add('lit') } else { txt.textContent = 'Enter your name to craft a personalised blessing ✨'; box.classList.remove('lit') } gi++ });
 
     function showToast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800) }
+
     function doCopy() { const n = document.getElementById('nameIn').value.trim(); if (!n) { showToast('⚠ Enter your name first'); return } const txt = document.getElementById('msgText').textContent; navigator.clipboard?.writeText(txt).then(() => showToast('✓ Blessing copied!')).catch(() => { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); showToast('✓ Copied!') }) }
+
     function doShare() { const n = document.getElementById('nameIn').value.trim(); if (!n) { showToast('⚠ Enter your name first'); return } if (navigator.share) { navigator.share({ title: 'Eid Mubarak!', text: document.getElementById('msgText').textContent }).catch(() => { }) } else { navigator.clipboard?.writeText(`${location.href}?from=${encodeURIComponent(n)}`).then(() => showToast('🌙 Link copied!')) } }
 
     window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight) });
